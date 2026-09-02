@@ -1,13 +1,11 @@
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-)
+# app/keyboards.py
+
+from telegram import ReplyKeyboardMarkup
 
 
-# ============================================================
-# CUSTOMER MAIN MENU
-# ============================================================
+# =========================================================
+# القائمة الرئيسية
+# =========================================================
 
 def customer_main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -21,29 +19,30 @@ def customer_main_menu() -> ReplyKeyboardMarkup:
     )
 
 
-# ============================================================
-# CANCEL
-# ============================================================
+# =========================================================
+# زر الرجوع
+# =========================================================
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            ["🔙 إلغاء"],
+            ["🔙 رجوع"],
         ],
         resize_keyboard=True,
         is_persistent=True,
     )
 
 
-# ============================================================
-# TELECOM COMPANIES
-# ============================================================
+# =========================================================
+# شركات الاتصالات
+# =========================================================
 
 def companies_keyboard(companies) -> ReplyKeyboardMarkup:
     rows = []
     current_row = []
 
     for company in companies:
+
         current_row.append(company.name)
 
         if len(current_row) == 2:
@@ -53,7 +52,7 @@ def companies_keyboard(companies) -> ReplyKeyboardMarkup:
     if current_row:
         rows.append(current_row)
 
-    rows.append(["🔙 إلغاء"])
+    rows.append(["🔙 رجوع"])
 
     return ReplyKeyboardMarkup(
         rows,
@@ -62,51 +61,33 @@ def companies_keyboard(companies) -> ReplyKeyboardMarkup:
     )
 
 
-# ============================================================
-# PHONE REGISTRATION RESULT
-# ============================================================
+# =========================================================
+# تأكيد الرقم
+# =========================================================
 
-def phone_registered_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def phone_confirmation_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton(
-                    "🛡️ تفعيل الحماية الآن",
-                    callback_data="activate_protection",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📱 الانتقال إلى أرقامي",
-                    callback_data="my_numbers",
-                )
-            ],
-        ]
+            ["✅ تأكيد الرقم"],
+            ["✏️ تعديل الرقم"],
+            ["🔙 رجوع"],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
     )
 
 
-# ============================================================
-# CONFIRM PHONE
-# ============================================================
+# =========================================================
+# بعد تسجيل الرقم
+# =========================================================
 
-def phone_confirmation_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def phone_registered_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton(
-                    "✅ تأكيد الرقم",
-                    callback_data="confirm_phone",
-                ),
-                InlineKeyboardButton(
-                    "✏️ تعديل الرقم",
-                    callback_data="edit_phone",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "🔙 إلغاء",
-                    callback_data="cancel_phone",
-                ),
-            ],
-        ]
+            ["🛡️ تفعيل الحماية"],
+            ["📱 أرقامي"],
+            ["🏠 الرئيسية"],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
     )
