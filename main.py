@@ -23,18 +23,32 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("تم تهيئة وعمل جداول قاعدة البيانات بنجاح.")
 
-def main():
+async def main_async():
     if not settings.BOT_TOKEN:
         logger.error("خطأ: لم يتم تعيين رمز البوت BOT_TOKEN.")
         return
 
-    asyncio.run(init_db())
+    await init_db()
 
     app = ApplicationBuilder().token(settings.BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
 
     logger.info("جاري تشغيل بوت أمان...")
-    app.run_polling()
+    
+    # التشغيل بالطريقة غير المتزامنة الآمنة والمتوافقة مع Python 3.14
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # الحفاظ على تشغيل البوت
+    stop_event = asyncio.Event()
+    await stop_event.wait()
+
+def main():
+    try:
+        asyncio.run(main_async())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("تم إيقاف البوت.")
 
 if __name__ == "__main__":
     main()
