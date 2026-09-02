@@ -20,7 +20,7 @@ def do_run_migrations(connection):
 async def run_async_migrations():
     url=normalize_url(os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url"))
     if not url: raise RuntimeError("DATABASE_URL is required for Alembic migrations")
-    connectable=create_async_engine(url,poolclass=pool.NullPool)
+    connectable=create_async_engine(url,poolclass=pool.NullPool,connect_args={"statement_cache_size": 0})
     async with connectable.connect() as connection: await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 
