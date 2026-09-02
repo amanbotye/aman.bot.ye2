@@ -1,95 +1,27 @@
-# app/database.py
+from __future__ import annotations
+from contextlib import asynccontextmanager
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from app.config import settings
 
-import os
-
-from sqlalchemy.ext.asyncio import (
-    create_async_engine,
-    AsyncSession,
-    async_sessionmaker,
-)
-
-from sqlalchemy.orm import declarative_base
-
-
-# =========================================================
-# DATABASE URL
-# =========================================================
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://user:password@localhost/dbname",
-)
-
-
-# Render / Supabase compatibility
-if DATABASE_URL.startswith("postgres://"):
-
-    DATABASE_URL = DATABASE_URL.replace(
-        "postgres://",
-        "postgresql+asyncpg://",
-        1,
-    )
-
-elif (
-    DATABASE_URL.startswith("postgresql://")
-    and "+asyncpg" not in DATABASE_URL
-):
-
-    DATABASE_URL = DATABASE_URL.replace(
-        "postgresql://",
-        "postgresql+asyncpg://",
-        1,
-    )
-
-
-# =========================================================
-# ENGINE
-# =========================================================
+if not settings.database_url:
+    raise RuntimeError('DATABASE_URL is required')
 
 engine = create_async_engine(
-    DATABASE_URL,
-
+    settings.database_url,
     echo=False,
-
-    future=True,
-
-    # مهم جدًا مع Supabase PgBouncer
-    connect_args={
-        "statement_cache_size": 0,
-    },
+    pool_pre_ping=True,
+    connect_args={'statement_cache_size': 0, 'prepared_statement_cache_size': 0},
 )
+SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
 
-
-# =========================================================
-# SESSION
-# =========================================================
-
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
-
-
-# =========================================================
-# BASE
-# =========================================================
-
-Base = declarative_base()
-
-
-# =========================================================
-# DATABASE SESSION
-# =========================================================
-
-async def get_db():
-
-    async with AsyncSessionLocal() as session:
-
+@asynccontextmanager
+async def db_session():
+    async with SessionLocal() as session:
         try:
-
             yield session
+        except Exception:
+            await session.rollback()
+            raise
 
-        finally:
-
-            await session.close()
+async def close_db() -> None:
+    await engine.dispose()
