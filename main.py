@@ -10,7 +10,6 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     ConversationHandler,
     ContextTypes,
     filters,
@@ -70,8 +69,7 @@ logger = logging.getLogger(__name__)
 
 async def init_db():
     """
-    إنشاء الجداول الموجودة في الموديلات إذا لم تكن موجودة،
-    ثم إضافة شركات الاتصالات الافتراضية.
+    تهيئة قاعدة البيانات وإضافة شركات الاتصالات الافتراضية.
     """
 
     async with engine.begin() as conn:
@@ -92,13 +90,12 @@ async def start_command(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    بداية البوت.
+    الصفحة الرئيسية.
     """
 
     if not update.effective_user or not update.message:
         return
 
-    # إعادة ضبط أي عملية سابقة بأمان
     context.user_data.clear()
 
     user = update.effective_user
@@ -109,10 +106,7 @@ async def start_command(
             user,
         )
 
-    if customer.full_name:
-        welcome_name = customer.full_name
-    else:
-        welcome_name = user.first_name or "بك"
+    welcome_name = customer.full_name or user.first_name or "بك"
 
     await update.message.reply_text(
         f"مرحباً بك {welcome_name} 👋\n\n"
@@ -132,7 +126,7 @@ async def start_protection(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    بدء عملية إضافة رقم جديد.
+    بدء رحلة حماية رقم.
     """
 
     if not update.effective_user or not update.message:
@@ -141,6 +135,7 @@ async def start_protection(
     user = update.effective_user
 
     async with AsyncSessionLocal() as db:
+
         customer = await get_or_create_customer(
             db,
             user,
@@ -150,11 +145,16 @@ async def start_protection(
 
     context.user_data["customer_id"] = customer.id
 
-    # إذا كان الاسم محفوظًا مسبقًا لا نطلبه مرة أخرى
+    # -----------------------------------------------------
+    # الاسم موجود مسبقًا
+    # -----------------------------------------------------
+
     if customer.full_name:
+
         context.user_data["customer_name"] = customer.full_name
 
         if not companies:
+
             await update.message.reply_text(
                 "⚠️ لا توجد شركات اتصالات متاحة حاليًا.\n"
                 "يرجى المحاولة لاحقًا.",
@@ -170,7 +170,10 @@ async def start_protection(
 
         return CustomerState.COMPANY_SELECTION
 
+    # -----------------------------------------------------
     # الاسم غير موجود
+    # -----------------------------------------------------
+
     await update.message.reply_text(
         "نحتاج اسمك الكامل مرة واحدة فقط "
         "لربط أرقامك بحسابك.\n\n"
@@ -190,27 +193,52 @@ async def receive_name(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    استقبال اسم العميل.
+    استقبال الاسم.
     """
 
     if not update.message:
         return CustomerState.NAME_INPUT
 
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
 
-    if text == "🔙 إلغاء":
-        await update.message.reply_text(
-            "تم إلغاء العملية.",
-            reply_markup=customer_main_menu(),
+    # -----------------------------------------------------
+    # الرجوع
+    # -----------------------------------------------------
+
+    if text == "🔙 رجوع" or text == "🔙 إلغاء":
+
+        return await cancel_text_flow(
+            update,
+            context,
         )
 
-        return ConversationHandler.END
+    # -----------------------------------------------------
+    # تجاهل أزرار القائمة أثناء الإدخال
+    # -----------------------------------------------------
+
+    if text in {
+        "🛡️ حماية رقم",
+        "📱 أرقامي",
+        "👤 حسابي",
+        "💬 الدعم",
+        "❓ المساعدة",
+    }:
+
+        await update.message.reply_text(
+            "⚠️ أنت الآن في خطوة إدخال الاسم.\n\n"
+            "✍️ اكتب اسمك الكامل أو اضغط «🔙 رجوع».",
+            reply_markup=cancel_keyboard(),
+        )
+
+        return CustomerState.NAME_INPUT
 
     name = normalize_name(text)
 
     if not is_valid_full_name(name):
+
         await update.message.reply_text(
-            "⚠️ يرجى كتابة اسمك الكامل بشكل صحيح."
+            "⚠️ يرجى كتابة اسمك الكامل بشكل صحيح.",
+            reply_markup=cancel_keyboard(),
         )
 
         return CustomerState.NAME_INPUT
@@ -218,6 +246,7 @@ async def receive_name(
     customer_id = context.user_data.get("customer_id")
 
     if not customer_id:
+
         await update.message.reply_text(
             "⚠️ انتهت جلسة العملية.\n"
             "أرسل /start وحاول مرة أخرى.",
@@ -234,6 +263,7 @@ async def receive_name(
         )
 
         if not customer:
+
             await update.message.reply_text(
                 "⚠️ تعذر العثور على حسابك.\n"
                 "أرسل /start وحاول مرة أخرى.",
@@ -251,6 +281,7 @@ async def receive_name(
     context.user_data["customer_name"] = name
 
     if not companies:
+
         await update.message.reply_text(
             "⚠️ لا توجد شركات اتصالات متاحة حاليًا.",
             reply_markup=customer_main_menu(),
@@ -282,15 +313,26 @@ async def receive_company(
     if not update.message:
         return CustomerState.COMPANY_SELECTION
 
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
 
-    if text == "🔙 إلغاء":
+    # -----------------------------------------------------
+    # الرجوع
+    # -----------------------------------------------------
+
+    if text == "🔙 رجوع" or text == "🔙 إلغاء":
+
+        context.user_data.clear()
+
         await update.message.reply_text(
-            "تم إلغاء العملية.",
+            "تم الرجوع إلى القائمة الرئيسية.",
             reply_markup=customer_main_menu(),
         )
 
         return ConversationHandler.END
+
+    # -----------------------------------------------------
+    # التحقق من الشركة
+    # -----------------------------------------------------
 
     async with AsyncSessionLocal() as db:
 
@@ -304,8 +346,13 @@ async def receive_company(
         company = result.scalar_one_or_none()
 
     if not company:
+
+        async with AsyncSessionLocal() as db:
+            companies = await get_active_companies(db)
+
         await update.message.reply_text(
-            "⚠️ اختر شركة من الأزرار الموجودة أمامك."
+            "⚠️ اختر شركة من الأزرار الموجودة أمامك.",
+            reply_markup=companies_keyboard(companies),
         )
 
         return CustomerState.COMPANY_SELECTION
@@ -342,9 +389,16 @@ async def receive_phone(
     if not update.message:
         return CustomerState.PHONE_INPUT
 
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
 
-    if text == "🔙 إلغاء":
+    # -----------------------------------------------------
+    # الرجوع
+    # -----------------------------------------------------
+
+    if text == "🔙 رجوع" or text == "🔙 إلغاء":
+
+        context.user_data.clear()
+
         await update.message.reply_text(
             "تم إلغاء العملية.",
             reply_markup=customer_main_menu(),
@@ -352,15 +406,37 @@ async def receive_phone(
 
         return ConversationHandler.END
 
+    # -----------------------------------------------------
+    # منع استخدام أزرار القائمة أثناء إدخال الرقم
+    # -----------------------------------------------------
+
+    if text in {
+        "🛡️ حماية رقم",
+        "📱 أرقامي",
+        "👤 حسابي",
+        "💬 الدعم",
+        "❓ المساعدة",
+    }:
+
+        await update.message.reply_text(
+            "⚠️ أنت الآن في خطوة إدخال الرقم.\n\n"
+            "✍️ اكتب رقم الهاتف أو اضغط «🔙 رجوع».",
+            reply_markup=cancel_keyboard(),
+        )
+
+        return CustomerState.PHONE_INPUT
+
     phone = normalize_phone(text)
 
     if not is_valid_yemeni_phone(phone):
+
         await update.message.reply_text(
             "❌ رقم الهاتف غير صحيح.\n\n"
             "أدخل رقم جوال يمني مكونًا من 9 أرقام "
             "ويبدأ بـ 7.\n\n"
             "مثال:\n"
-            "771234567"
+            "771234567",
+            reply_markup=cancel_keyboard(),
         )
 
         return CustomerState.PHONE_INPUT
@@ -369,6 +445,7 @@ async def receive_phone(
     company_id = context.user_data.get("company_id")
 
     if not customer_id or not company_id:
+
         await update.message.reply_text(
             "⚠️ انتهت جلسة العملية.\n"
             "أرسل /start وحاول مرة أخرى.",
@@ -393,30 +470,70 @@ async def receive_phone(
 # CONFIRM PHONE
 # =========================================================
 
-async def confirm_phone(
+async def confirm_phone_text(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    تأكيد الرقم وتسجيله.
+    تأكيد الرقم باستخدام Reply Keyboard.
     """
 
-    query = update.callback_query
+    if not update.message:
+        return CustomerState.PHONE_CONFIRMATION
 
-    if not query:
-        return ConversationHandler.END
-
-    await query.answer()
+    text = (update.message.text or "").strip()
 
     customer_id = context.user_data.get("customer_id")
     company_id = context.user_data.get("company_id")
     phone_number = context.user_data.get("pending_phone")
 
+    # -----------------------------------------------------
+    # تعديل الرقم
+    # -----------------------------------------------------
+
+    if text == "✏️ تعديل الرقم":
+
+        await update.message.reply_text(
+            "✏️ اكتب رقم الهاتف الصحيح:",
+            reply_markup=cancel_keyboard(),
+        )
+
+        return CustomerState.PHONE_INPUT
+
+    # -----------------------------------------------------
+    # إلغاء
+    # -----------------------------------------------------
+
+    if text == "🔙 رجوع" or text == "🔙 إلغاء":
+
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "تم إلغاء العملية.",
+            reply_markup=customer_main_menu(),
+        )
+
+        return ConversationHandler.END
+
+    # -----------------------------------------------------
+    # تأكيد
+    # -----------------------------------------------------
+
+    if text != "✅ تأكيد الرقم":
+
+        await update.message.reply_text(
+            "⚠️ اختر أحد الخيارات من الأزرار.",
+            reply_markup=phone_confirmation_keyboard(),
+        )
+
+        return CustomerState.PHONE_CONFIRMATION
+
     if not customer_id or not company_id or not phone_number:
 
-        await query.edit_message_text(
+        await update.message.reply_text(
             "⚠️ انتهت جلسة العملية.\n"
-            "أرسل /start وحاول مرة أخرى."
+            "أرسل /start وحاول مرة أخرى.",
+            reply_markup=customer_main_menu(),
         )
 
         context.user_data.clear()
@@ -437,8 +554,9 @@ async def confirm_phone(
 
         if not customer or not company:
 
-            await query.edit_message_text(
-                "⚠️ تعذر إكمال العملية."
+            await update.message.reply_text(
+                "⚠️ تعذر إكمال العملية.",
+                reply_markup=customer_main_menu(),
             )
 
             context.user_data.clear()
@@ -457,16 +575,15 @@ async def confirm_phone(
         None,
     )
 
+    # -----------------------------------------------------
     # الرقم ملك مستخدم آخر
+    # -----------------------------------------------------
+
     if result == "owned_by_other":
 
-        await query.edit_message_text(
+        await update.message.reply_text(
             "❌ لا يمكن تسجيل هذا الرقم.\n\n"
-            "هذا الرقم مرتبط بحساب آخر."
-        )
-
-        await query.message.reply_text(
-            "اختر خدمة أخرى من القائمة:",
+            "هذا الرقم مرتبط بحساب آخر.",
             reply_markup=customer_main_menu(),
         )
 
@@ -474,14 +591,14 @@ async def confirm_phone(
 
         return ConversationHandler.END
 
-    # الرقم موجود أصلًا عند نفس العميل
+    # -----------------------------------------------------
+    # الرقم موجود مسبقًا
+    # -----------------------------------------------------
+
     if result == "owned":
 
-        await query.edit_message_text(
-            "ℹ️ هذا الرقم مسجل لديك بالفعل."
-        )
-
-        await query.message.reply_text(
+        await update.message.reply_text(
+            "ℹ️ هذا الرقم مسجل لديك بالفعل.\n\n"
             f"📱 الرقم: {phone_number}\n\n"
             "يمكنك إدارة الرقم من قسم «📱 أرقامي».",
             reply_markup=customer_main_menu(),
@@ -491,82 +608,21 @@ async def confirm_phone(
 
         return ConversationHandler.END
 
+    # -----------------------------------------------------
     # رقم جديد
-    await query.edit_message_text(
+    # -----------------------------------------------------
+
+    await update.message.reply_text(
         "✅ تم تسجيل الرقم بنجاح.\n\n"
         f"📱 الرقم: {phone_number}\n"
         f"📡 الشركة: {company.name}\n\n"
         "حالة الحماية الحالية:\n"
-        "🟡 الحماية غير مفعلة."
-    )
-
-    await query.message.reply_text(
-        "هل تريد تفعيل الحماية الآن؟",
+        "🟡 الحماية غير مفعلة.",
         reply_markup=phone_registered_keyboard(),
     )
 
-    # نحتفظ مؤقتًا بمعرف الرقم للمرحلة القادمة
     context.user_data["phone_id"] = phone.id
     context.user_data["customer_id"] = customer.id
-
-    return ConversationHandler.END
-
-
-# =========================================================
-# EDIT PHONE
-# =========================================================
-
-async def edit_phone(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    """
-    العودة إلى إدخال الرقم.
-    """
-
-    query = update.callback_query
-
-    if not query:
-        return ConversationHandler.END
-
-    await query.answer()
-
-    await query.edit_message_text(
-        "✏️ اكتب رقم الهاتف الصحيح:"
-    )
-
-    return CustomerState.PHONE_INPUT
-
-
-# =========================================================
-# CANCEL PHONE
-# =========================================================
-
-async def cancel_phone(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    """
-    إلغاء عملية إضافة الرقم.
-    """
-
-    query = update.callback_query
-
-    if not query:
-        return ConversationHandler.END
-
-    await query.answer()
-
-    context.user_data.clear()
-
-    await query.edit_message_text(
-        "تم إلغاء العملية."
-    )
-
-    await query.message.reply_text(
-        "اختر الخدمة التي تريدها:",
-        reply_markup=customer_main_menu(),
-    )
 
     return ConversationHandler.END
 
@@ -643,86 +699,6 @@ async def send_my_numbers(
         )
 
     await update.message.reply_text(
-        "\n".join(lines),
-        reply_markup=customer_main_menu(),
-    )
-
-
-# =========================================================
-# MY NUMBERS CALLBACK
-# =========================================================
-
-async def my_numbers_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    """
-    زر الانتقال إلى أرقامي من الرسالة التفاعلية.
-    """
-
-    query = update.callback_query
-
-    if not query:
-        return
-
-    await query.answer()
-
-    user = update.effective_user
-
-    async with AsyncSessionLocal() as db:
-
-        customer = await get_or_create_customer(
-            db,
-            user,
-        )
-
-        numbers = await get_customer_numbers(
-            db,
-            customer.id,
-        )
-
-    if not numbers:
-
-        await query.message.reply_text(
-            "📱 أرقامك\n\n"
-            "لا توجد أرقام مسجلة في حسابك حتى الآن.",
-            reply_markup=customer_main_menu(),
-        )
-
-        return
-
-    lines = ["📱 أرقامك:\n"]
-
-    for index, phone in enumerate(
-        numbers,
-        start=1,
-    ):
-
-        company_name = (
-            phone.telecom_company.name
-            if phone.telecom_company
-            else "غير محدد"
-        )
-
-        if phone.status.value == "active":
-            status = "🟢 الحماية مفعلة"
-
-        elif phone.status.value == "inactive":
-            status = "🟡 الحماية غير مفعلة"
-
-        elif phone.status.value == "suspended":
-            status = "🟠 موقوفة"
-
-        else:
-            status = "⚫ ملغاة"
-
-        lines.append(
-            f"{index}. 📱 {phone.phone_number}\n"
-            f"   📡 {company_name}\n"
-            f"   {status}\n"
-        )
-
-    await query.message.reply_text(
         "\n".join(lines),
         reply_markup=customer_main_menu(),
     )
@@ -819,7 +795,7 @@ async def support_handler(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    مؤقتًا إلى أن يتم تركيب نظام الدعم الكامل.
+    الدعم - مؤقت حتى تركيب النظام الكامل.
     """
 
     if not update.message:
@@ -841,17 +817,13 @@ async def activate_protection(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    الانتقال إلى عملية تفعيل الحماية.
+    الانتقال إلى تفعيل الحماية.
     """
 
-    query = update.callback_query
-
-    if not query:
+    if not update.message:
         return
 
-    await query.answer()
-
-    await query.message.reply_text(
+    await update.message.reply_text(
         "🛡️ تفعيل الحماية\n\n"
         "سيتم الآن الانتقال إلى خطوات الدفع "
         "وتفعيل الاشتراك.",
@@ -868,13 +840,13 @@ async def menu_handler(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    التعامل مع أزرار القائمة الرئيسية.
+    القائمة الرئيسية.
     """
 
     if not update.message:
         return
 
-    text = update.message.text
+    text = (update.message.text or "").strip()
 
     if text == "📱 أرقامي":
 
@@ -904,12 +876,43 @@ async def menu_handler(
             context,
         )
 
+    elif text == "🛡️ تفعيل الحماية":
+
+        await activate_protection(
+            update,
+            context,
+        )
+
     else:
 
         await update.message.reply_text(
             "اختر إحدى الخدمات من القائمة:",
             reply_markup=customer_main_menu(),
         )
+
+
+# =========================================================
+# CANCEL TEXT FLOW
+# =========================================================
+
+async def cancel_text_flow(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """
+    إلغاء أي مرحلة نصية.
+    """
+
+    context.user_data.clear()
+
+    if update.message:
+
+        await update.message.reply_text(
+            "تم إلغاء العملية.",
+            reply_markup=customer_main_menu(),
+        )
+
+    return ConversationHandler.END
 
 
 # =========================================================
@@ -926,10 +929,16 @@ async def main_async():
 
         return
 
-    # تهيئة قاعدة البيانات
+    # -----------------------------------------------------
+    # Database
+    # -----------------------------------------------------
+
     await init_db()
 
-    # إنشاء تطبيق Telegram
+    # -----------------------------------------------------
+    # Telegram Application
+    # -----------------------------------------------------
+
     application = (
         ApplicationBuilder()
         .token(settings.BOT_TOKEN)
@@ -951,42 +960,51 @@ async def main_async():
 
         states={
 
+            # -------------------------------------------------
+            # الاسم
+            # -------------------------------------------------
+
             CustomerState.NAME_INPUT: [
+
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     receive_name,
-                )
+                ),
             ],
 
+            # -------------------------------------------------
+            # الشركة
+            # -------------------------------------------------
+
             CustomerState.COMPANY_SELECTION: [
+
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     receive_company,
-                )
+                ),
             ],
 
+            # -------------------------------------------------
+            # الرقم
+            # -------------------------------------------------
+
             CustomerState.PHONE_INPUT: [
+
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     receive_phone,
-                )
+                ),
             ],
+
+            # -------------------------------------------------
+            # تأكيد الرقم
+            # -------------------------------------------------
 
             CustomerState.PHONE_CONFIRMATION: [
 
-                CallbackQueryHandler(
-                    confirm_phone,
-                    pattern=r"^confirm_phone$",
-                ),
-
-                CallbackQueryHandler(
-                    edit_phone,
-                    pattern=r"^edit_phone$",
-                ),
-
-                CallbackQueryHandler(
-                    cancel_phone,
-                    pattern=r"^cancel_phone$",
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    confirm_phone_text,
                 ),
             ],
         },
@@ -999,18 +1017,19 @@ async def main_async():
             ),
 
             MessageHandler(
-                filters.Regex(r"^🔙 إلغاء$"),
-                lambda update, context: cancel_text_flow(
-                    update,
-                    context,
-                ),
+                filters.Regex(r"^🔙 (إلغاء|رجوع)$"),
+                cancel_text_flow,
             ),
         ],
 
         allow_reentry=True,
+
     )
 
+    # =====================================================
     # /start
+    # =====================================================
+
     application.add_handler(
         CommandHandler(
             "start",
@@ -1018,27 +1037,12 @@ async def main_async():
         )
     )
 
+    # =====================================================
     # حماية رقم
+    # =====================================================
+
     application.add_handler(
         protection_conversation
-    )
-
-    # =====================================================
-    # أزرار Inline
-    # =====================================================
-
-    application.add_handler(
-        CallbackQueryHandler(
-            activate_protection,
-            pattern=r"^activate_protection$",
-        )
-    )
-
-    application.add_handler(
-        CallbackQueryHandler(
-            my_numbers_callback,
-            pattern=r"^my_numbers$",
-        )
     )
 
     # =====================================================
@@ -1052,6 +1056,10 @@ async def main_async():
         )
     )
 
+    # =====================================================
+    # التشغيل
+    # =====================================================
+
     logger.info(
         "🚀 بوت أمان AMAN يعمل الآن..."
     )
@@ -1064,10 +1072,10 @@ async def main_async():
         drop_pending_updates=True
     )
 
-    # إبقاء البوت يعمل
     stop_event = asyncio.Event()
 
     try:
+
         await stop_event.wait()
 
     finally:
@@ -1075,29 +1083,6 @@ async def main_async():
         await application.updater.stop()
         await application.stop()
         await application.shutdown()
-
-
-# =========================================================
-# CANCEL TEXT FLOW
-# =========================================================
-
-async def cancel_text_flow(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    """
-    إلغاء أي مرحلة نصية من عملية الحماية.
-    """
-
-    context.user_data.clear()
-
-    if update.message:
-        await update.message.reply_text(
-            "تم إلغاء العملية.",
-            reply_markup=customer_main_menu(),
-        )
-
-    return ConversationHandler.END
 
 
 # =========================================================
