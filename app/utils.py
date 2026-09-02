@@ -1,35 +1,42 @@
-from __future__ import annotations
+import re
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
-import json, re, secrets
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-ARABIC_DIGITS=str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹','01234567890123456789')
-def utcnow(): return datetime.now(timezone.utc)
-def normalize_name(value:str)->str: return ' '.join((value or '').strip().split())
-def is_valid_full_name(value:str)->bool:
-    n=normalize_name(value); return 2 <= len(n) <= 255 and any(c.isalpha() for c in n)
-def normalize_phone(value:str)->str:
-    s=(value or '').strip().translate(ARABIC_DIGITS)
-    s=re.sub(r'[\s\-().]','',s)
-    if s.startswith('00'): s='+'+s[2:]
-    if s.startswith('+967'): return s
-    if s.startswith('967'): return '+'+s
-    if s.startswith('7') and len(s)==9: return '+967'+s
-    return s
-def is_valid_yemeni_phone(value:str)->bool: return bool(re.fullmatch(r'\+9677\d{8}',value or ''))
-def display_phone(value:str)->str: return value[4:] if value.startswith('+967') else value
-def parse_decimal(value:str)->Decimal:
+YEMEN_PREFIX = "+967"
+
+def normalize_yemen_phone(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("رقم الهاتف اليمني غير صحيح.")
+    raw = re.sub(r"[\s().-]", "", value.strip())
+    if raw.startswith("00"):
+        raw = "+" + raw[2:]
+    if raw.startswith("967"):
+        raw = "+" + raw
+    if raw.startswith("0"):
+        raw = "+967" + raw[1:]
+    elif re.fullmatch(r"7\d{8}", raw):
+        raw = "+967" + raw
+    if not re.fullmatch(r"\+9677\d{8}", raw):
+        raise ValueError("رقم الهاتف اليمني غير صحيح. مثال: 771234567")
+    return raw
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+def money(value) -> Decimal:
     try:
-        d=Decimal(str(value).strip());
-        if not d.is_finite() or d<0: raise InvalidOperation
-        return d
-    except InvalidOperation as e: raise ValueError('Invalid amount') from e
-def payment_code()->str: return 'AMAN-'+secrets.token_hex(3).upper()
-def ticket_code()->str: return 'TKT-'+secrets.token_hex(3).upper()
-def json_dumps(data)->str: return json.dumps(data, ensure_ascii=False, default=str, sort_keys=True)
-def days_remaining(end:datetime|None, now:datetime|None=None)->int:
-    if not end: return 0
-    now=now or utcnow(); return max(0,(end-now).days)
-def setting_int(value:str, default:int)->int:
-    try:return int(value)
-    except (TypeError,ValueError):return default
+        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError("قيمة مالية غير صحيحة") from exc
+    if amount < 0:
+        raise ValueError("القيمة المالية لا يمكن أن تكون سالبة")
+    return amount
+
+def safe_int(value: str, minimum=0) -> int:
+    try:
+        n = int(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("القيمة يجب أن تكون رقمًا صحيحًا") from exc
+    if n < minimum:
+        raise ValueError(f"القيمة يجب ألا تقل عن {minimum}")
+    return n

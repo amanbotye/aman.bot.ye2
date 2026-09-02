@@ -1,27 +1,16 @@
-from __future__ import annotations
-from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from app.config import settings
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
-if not settings.database_url:
-    raise RuntimeError('DATABASE_URL is required')
+class Base(DeclarativeBase):
+    """SQLAlchemy declarative base."""
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    pool_pre_ping=True,
-    connect_args={'statement_cache_size': 0, 'prepared_statement_cache_size': 0},
-)
-SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
 
-@asynccontextmanager
-async def db_session():
-    async with SessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-
-async def close_db() -> None:
-    await engine.dispose()
+def create_session_factory(database_url: str, pool_size: int = 5, max_overflow: int = 5):
+    kwargs = {"pool_pre_ping": True, "future": True}
+    if database_url.startswith("postgresql+asyncpg://"):
+        kwargs.update(pool_size=pool_size, max_overflow=max_overflow, pool_recycle=1800)
+    else:
+        kwargs["poolclass"] = NullPool
+    engine = create_async_engine(database_url, **kwargs)
+    return engine, async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession, autoflush=False)

@@ -1,0 +1,1 @@
+"""AMAN application package."""
