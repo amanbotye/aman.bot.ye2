@@ -35,10 +35,10 @@ async def main_async():
 
     logger.info("جاري تشغيل بوت أمان...")
     
-    # التشغيل بالطريقة غير المتزامنة الآمنة والمتوافقة مع Python 3.14
+    # التشغيل بالطريقة غير المتزامنة وتجاهل الطلبات القديمة لمنع خطأ 409 Conflict
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
+    await app.updater.start_polling(drop_pending_updates=True)
     
     # الحفاظ على تشغيل البوت
     stop_event = asyncio.Event()
