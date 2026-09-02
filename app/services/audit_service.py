@@ -1,4 +1,6 @@
-from app.models import AuditLog
-from app.utils import json_dumps
-async def audit(db, actor, action, entity_type=None, entity_id=None, old_data=None, new_data=None):
-    db.add(AuditLog(actor=actor,action=action,entity_type=entity_type,entity_id=entity_id,old_data=json_dumps(old_data) if old_data is not None else None,new_data=json_dumps(new_data) if new_data is not None else None))
+import json
+class AuditService:
+ async def log(self,s,admin_id,action,entity_type,entity_id,old=None,new=None,metadata=None):
+  from ..models import AuditLog
+  row=AuditLog(admin_telegram_id=admin_id,action=action,entity_type=entity_type,entity_id=str(entity_id),old_value=json.dumps(old,ensure_ascii=False,default=str) if old is not None else None,new_value=json.dumps(new,ensure_ascii=False,default=str) if new is not None else None,metadata_json=json.dumps(metadata,ensure_ascii=False,default=str) if metadata else None)
+  s.add(row); await s.flush(); return row

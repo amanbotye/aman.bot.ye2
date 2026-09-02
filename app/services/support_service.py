@@ -1,11 +1,28 @@
-from sqlalchemy import select,func
-from app.models import SupportTicket,SupportMessage,SupportStatus
-from app.utils import ticket_code,utcnow
-async def create_ticket(db,customer_id,subject):
-    t=SupportTicket(ticket_code=ticket_code(),customer_id=customer_id,subject=subject.strip(),status=SupportStatus.new,last_message_at=utcnow());db.add(t);await db.flush();return t
-async def add_message(db,ticket_id,sender_id,text,is_admin=False):
-    t=(await db.execute(select(SupportTicket).where(SupportTicket.id==ticket_id).with_for_update())).scalar_one_or_none()
-    if not t or t.status==SupportStatus.closed:return None,'closed'
-    m=SupportMessage(ticket_id=ticket_id,sender_telegram_id=sender_id,sender_is_admin=is_admin,text=text);db.add(m);t.status=SupportStatus.open;t.last_message_at=utcnow();await db.flush();return m,'ok'
-async def customer_tickets(db,customer_id):return (await db.execute(select(SupportTicket).where(SupportTicket.customer_id==customer_id).order_by(SupportTicket.updated_at.desc()))).scalars().all()
-async def messages(db,ticket_id):return (await db.execute(select(SupportMessage).where(SupportMessage.ticket_id==ticket_id).order_by(SupportMessage.created_at))).scalars().all()
+from ..models import TicketStatus
+class SupportService:
+    def __init__(self,repo): self.repo=repo
+    async def create(self,customer_id,subject):
+        subject=" ".join(str(subject).split())
+        if len(subject)<2 or len(subject)>255: raise ValueError("عنوان التذكرة غير صالح.")
+        return await self.repo.create_ticket(customer_id=customer_id,subject=subject,status=TicketStatus.OPEN)
+    async def message(self,ticket_id,sender,text,is_admin=False):
+        t=await self.repo.get(ticket_id)
+        if not t: raise ValueError("التذكرة غير موجودة.")
+        if t.status==TicketStatus.CLOSED: raise ValueError("التذكرة مغلقة ولا تستقبل رسائل. أعد فتحها أولًا.")
+        text=text.strip()
+        if not text or len(text)>4000: raise ValueError("الرسالة غير صالحة.")
+        row=await self.repo.add_message(ticket_id=ticket_id,sender_telegram_id=sender,message_text=text)
+        t.status=TicketStatus.PENDING_CUSTOMER if is_admin else TicketStatus.OPEN
+        return row
+    async def close(self,ticket_id):
+        t=await self.repo.get(ticket_id)
+        if not t: raise ValueError("التذكرة غير موجودة.")
+        t.status=TicketStatus.CLOSED; return t
+    async def reopen(self,ticket_id):
+        t=await self.repo.get(ticket_id)
+        if not t: raise ValueError("التذكرة غير موجودة.")
+        t.status=TicketStatus.OPEN; return t
+    async def assign(self,ticket_id,admin_id):
+        t=await self.repo.get(ticket_id)
+        if not t: raise ValueError("التذكرة غير موجودة.")
+        t.assigned_admin_id=admin_id; return t
