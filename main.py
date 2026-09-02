@@ -1,10 +1,11 @@
+# main.py
 import asyncio
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from config import settings
-from database import engine, Base
-from models import UserModel, ProtectedPhoneModel
+from app.config import settings
+from app.database import engine, Base
+from app.models import Customer, PhoneNumber
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
