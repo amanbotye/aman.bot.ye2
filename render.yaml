@@ -1,0 +1,23 @@
+services:
+  - type: worker
+    name: aman-telegram-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./scripts/start.sh
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: TIMEZONE
+        value: UTC
+      - key: ENVIRONMENT
+        value: production
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: SANDBOX_DATABASE_URL
+        sync: false
