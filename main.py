@@ -228,7 +228,9 @@ async def error_handler(update,context): log.error("Telegram update error: %s",c
 async def run():
     settings=Settings.from_env(); engine,sf=create_session_factory(settings.database_url,settings.db_pool_size,settings.db_max_overflow)
     async with sf() as s:
-        await SettingsService(s).seed_defaults(); await AdminService(s).bootstrap(settings.admin_ids); await s.commit()
+        await SettingsService(s).seed_defaults(); await s.commit()
+    async with sf() as s:
+        await AdminService(s).bootstrap(settings.admin_ids); await s.commit()
     sandbox_engine=sandbox_sf=None
     if settings.sandbox_database_url:
         sandbox_engine,sandbox_sf=create_session_factory(settings.sandbox_database_url,settings.db_pool_size,settings.db_max_overflow)
